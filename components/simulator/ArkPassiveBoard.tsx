@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertCircle, RotateCcw, Trash2 } from "lucide-react";
 import { MASTER_DATA } from "@/constants/ArkPassiveData/arkPassiveData.tsx";
@@ -21,6 +21,81 @@ export const ArkPassiveBoard = ({
     }
 
     const [activeTab, setActiveTab] = useState<"진화" | "깨달음" | "도약">("깨달음");
+
+    // ✅ n랭크 / m레벨 파싱/패치
+    const parseRankLevel = (desc: string) => {
+        const s = String(desc ?? "");
+        const rank = Number(s.match(/(\d+)\s*랭크/)?.[1] ?? 0);
+        const level = Number(s.match(/(\d+)\s*레벨/)?.[1] ?? 0);
+        return {
+            rank: Number.isFinite(rank) ? rank : 0,
+            level: Number.isFinite(level) ? level : 0,
+        };
+    };
+
+    const patchRankLevel = (desc: string, rank: number, level: number) => {
+        let s = String(desc ?? "");
+
+        if (/\d+\s*랭크/.test(s)) s = s.replace(/\d+\s*랭크/g, `${rank}랭크`);
+        else s = `${s} ${rank}랭크`;
+
+        if (/\d+\s*레벨/.test(s)) s = s.replace(/\d+\s*레벨/g, `${level}레벨`);
+        else s = `${s} ${level}레벨`;
+
+        return s.replace(/\s+/g, " ").trim();
+    };
+
+    const getActivePoint = () => data?.Points?.find((p: any) => p.Name === activeTab);
+
+    const [rankN, setRankN] = useState<number>(() => parseRankLevel(getActivePoint()?.Description ?? "").rank);
+    const [levelM, setLevelM] = useState<number>(() => parseRankLevel(getActivePoint()?.Description ?? "").level);
+
+    // ✅ 표시 텍스트/편집 토글
+    const [editRankLevel, setEditRankLevel] = useState(false);
+
+    // ✅ 클릭-바깥 감지(라이브러리 없이)
+    const rankLevelWrapRef = useRef<HTMLDivElement | null>(null);
+    React.useEffect(() => {
+        if (!editRankLevel) return;
+        const onDown = (e: MouseEvent | TouchEvent) => {
+            const el = rankLevelWrapRef.current;
+            if (!el) return;
+            const target = e.target as Node | null;
+            if (target && el.contains(target)) return;
+            setEditRankLevel(false);
+        };
+        window.addEventListener("mousedown", onDown);
+        window.addEventListener("touchstart", onDown);
+        return () => {
+            window.removeEventListener("mousedown", onDown);
+            window.removeEventListener("touchstart", onDown);
+        };
+    }, [editRankLevel]);
+
+    // ✅ 탭 변경/데이터 갱신 시 현재 Description 기준으로 n/m 동기화
+    React.useEffect(() => {
+        const p = getActivePoint();
+        const { rank, level } = parseRankLevel(p?.Description ?? "");
+        setRankN(rank);
+        setLevelM(level);
+        setEditRankLevel(false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab, data]);
+
+    const commitRankLevel = (nextRank: number, nextLevel: number) => {
+        const points = Array.isArray(data?.Points) ? [...data.Points] : [];
+        const idx = points.findIndex((p: any) => p?.Name === activeTab);
+        if (idx < 0) return;
+
+        const prevDesc = String(points[idx]?.Description ?? "");
+        points[idx] = {
+            ...points[idx],
+            Description: patchRankLevel(prevDesc, nextRank, nextLevel),
+        };
+
+        onChangeData({ ...data, Points: points });
+    };
+
     const [selectedEffect, setSelectedEffect] = useState<any>(null);
     const [selectedNodeMax, setSelectedNodeMax] = useState<number>(0);
     const [editLv, setEditLv] = useState<number>(0);
@@ -32,9 +107,7 @@ export const ArkPassiveBoard = ({
     const tooltipLines = useMemo(() => {
         if (!hoverInfo) return null;
 
-        const category =
-            activeTab === "진화" ? "EVOLUTION" :
-                activeTab === "깨달음" ? "ENLIGHTENMENT" : "LEAP";
+        const category = activeTab === "진화" ? "EVOLUTION" : activeTab === "깨달음" ? "ENLIGHTENMENT" : "LEAP";
 
         // ✅ 핵심: DB 매칭은 node.name이 제일 정확함
         const name = String(hoverInfo.node?.name ?? "").trim();
@@ -43,21 +116,16 @@ export const ArkPassiveBoard = ({
 
         const className = character?.CharacterClassName || character?.CharacterClass;
 
-        // (선택) 만약 DB가 직업 공통으로 저장돼 있으면 className을 빼야 함
         return getTooltip(category as any, name, level, className);
     }, [hoverInfo, activeTab, character]);
-
 
     React.useEffect(() => {
         setSimEffects(data?.Effects ?? []);
     }, [data]);
 
     const findMasterNode = (nodeName: string) => {
-        return currentMaster.find(
-            (m: any) => m.name === nodeName
-        );
+        return currentMaster.find((m: any) => m.name === nodeName);
     };
-
 
     const safeJsonParse = (jsonString: string) => {
         try {
@@ -100,8 +168,7 @@ export const ArkPassiveBoard = ({
         if (!currentClass) return [];
 
         if (activeTab === "진화") return MASTER_DATA.EVOLUTION || [];
-        if (activeTab === "깨달음")
-            return (MASTER_DATA.ENLIGHTENMENT_BY_CLASS as any)[currentClass] || [];
+        if (activeTab === "깨달음") return (MASTER_DATA.ENLIGHTENMENT_BY_CLASS as any)[currentClass] || [];
         if (activeTab === "도약") return (MASTER_DATA.LEAP_BY_CLASS as any)[currentClass] || [];
         return [];
     }, [activeTab, character]);
@@ -135,11 +202,7 @@ export const ArkPassiveBoard = ({
         };
     }, [activeTab]);
 
-    const renderTitleWithTier = (
-        fullText: string | undefined | null,
-        tab: string,
-        isModal = false
-    ) => {
+    const renderTitleWithTier = (fullText: string | undefined | null, tab: string, isModal = false) => {
         if (!fullText) return null;
         const text = cleanText(fullText);
         const tierMatch = text.match(/(\d+)티어/);
@@ -156,17 +219,12 @@ export const ArkPassiveBoard = ({
         return (
             <div className="flex items-center gap-2">
                 {tierNum && (
-                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border leading-none ${badgeTheme}`}>
-            T{tierNum}
-          </span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border leading-none ${badgeTheme}`}>T{tierNum}</span>
                 )}
-                <h4 className={`${isModal ? "text-lg" : "text-[13px]"} text-white font-bold`}>
-                    {titleWithoutTier}
-                </h4>
+                <h4 className={`${isModal ? "text-lg" : "text-[13px]"} text-white font-bold`}>{titleWithoutTier}</h4>
             </div>
         );
     };
-
 
     const patchDescLv = (desc: string, lv: number) => {
         const has = /Lv\.\d+/.test(desc || "");
@@ -196,21 +254,17 @@ export const ArkPassiveBoard = ({
             const next = [...(Array.isArray(prev) ? prev : [])];
 
             const idx = findEffectIndexByNode(next, String(node.name ?? ""));
-            const currentLv =
-                idx >= 0 ? getLvFromDesc(String(next[idx]?.Description ?? "")) : 0;
+            const currentLv = idx >= 0 ? getLvFromDesc(String(next[idx]?.Description ?? "")) : 0;
 
             const nextLv = Math.max(0, Math.min(max, currentLv + delta));
             if (nextLv === currentLv) return prev;
 
-            // 🔥 MASTER_DATA에서 원본 노드 찾기
             const masterNode = findMasterNode(node.name);
 
             if (nextLv === 0) {
-                // ✅ 0이면 자동 비활성화
                 if (idx >= 0) next.splice(idx, 1);
             } else {
                 if (idx < 0) {
-                    // ✅ 새로 활성화
                     next.push({
                         Name: `${activeTab} ${node.name}`,
                         Description: `${activeTab} ${node.name} Lv.${nextLv}`,
@@ -218,24 +272,18 @@ export const ArkPassiveBoard = ({
                         ToolTip: masterNode?.tooltip ?? "",
                     });
                 } else {
-                    // ✅ 기존 활성 노드 레벨 변경
                     next[idx] = {
                         ...next[idx],
-                        Description: patchDescLv(
-                            String(next[idx]?.Description ?? ""),
-                            nextLv
-                        ),
+                        Description: patchDescLv(String(next[idx]?.Description ?? ""), nextLv),
                     };
                 }
             }
 
-            // ✅ 즉시 부모(서버 기준 data)에 반영
             onChangeData({ ...data, Effects: next });
 
             return next;
         });
     };
-
 
     // ✅ data 없으면 UI
     if (!data) {
@@ -256,11 +304,8 @@ export const ArkPassiveBoard = ({
 
         const effects = Array.isArray(simEffects) ? [...simEffects] : [];
 
-        const findIdx = effects.findIndex(
-            (e: any) => e?.Name === selectedEffect?.Name && e?.Description === selectedEffect?.Description
-        );
+        const findIdx = effects.findIndex((e: any) => e?.Name === selectedEffect?.Name && e?.Description === selectedEffect?.Description);
 
-        // ✅ 0이면 제거(비활성화)
         if (safeLv <= 0) {
             if (findIdx >= 0) effects.splice(findIdx, 1);
             setSimEffects(effects);
@@ -293,16 +338,14 @@ export const ArkPassiveBoard = ({
         const serverEffects = data?.Effects ?? [];
 
         setSimEffects(serverEffects);
-
-        // 부모 상태도 서버 기준으로 복구
         onChangeData({ ...data, Effects: serverEffects });
 
         setSelectedEffect(null);
         setHoverInfo(null);
+        setEditRankLevel(false);
 
         if (onReset) onReset();
     };
-
 
     return (
         <div className="w-full bg-[#0f0f0f] text-zinc-300 p-6 space-y-6 font-sans relative overflow-x-hidden rounded-3xl border border-white/5">
@@ -323,6 +366,7 @@ export const ArkPassiveBoard = ({
                             onClick={() => {
                                 setActiveTab(tab);
                                 setHoverInfo(null);
+                                setEditRankLevel(false);
                             }}
                             className={`flex-1 py-1.5 rounded text-[12px] font-bold transition-all border border-transparent ${
                                 isActive ? activeStyles : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5"
@@ -342,15 +386,88 @@ export const ArkPassiveBoard = ({
               {data?.Points?.find((p: any) => p.Name === activeTab)?.Value || 0}
             </span>
                         <span className="text-xl font-bold text-zinc-600 ml-0.5">/</span>
-                        <span className="text-xl font-bold text-zinc-500 mr-1.5">
-              {activeTab === "진화" ? 140 : activeTab === "깨달음" ? 101 : 70}
-            </span>
+                        <span className="text-xl font-bold text-zinc-500 mr-1.5">{activeTab === "진화" ? 140 : activeTab === "깨달음" ? 101 : 70}</span>
                     </div>
 
-                    <div className={`px-3 py-0.5 rounded-full border shadow-inner mt-1 transition-all duration-300 ${theme.pill}`}>
-                        <p className={`text-xl font-bold tracking-widest transition-colors duration-300 ${theme.accentText}/80`}>
-                            {data?.Points?.find((p: any) => p.Name === activeTab)?.Description || "정보 없음"}
-                        </p>
+                    {/* ✅ n랭크 m레벨: 기본은 텍스트, 클릭 시 드랍다운 */}
+                    <div
+                        ref={rankLevelWrapRef}
+                        className={`px-3 py-0.5 rounded-full border shadow-inner mt-1 transition-all duration-300 ${theme.pill}`}
+                    >
+                        {!editRankLevel ? (
+                            <button
+                                type="button"
+                                onClick={() => setEditRankLevel(true)}
+                                className="inline-flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white/5 transition select-none"
+                                title="클릭해서 랭크/레벨 변경"
+                            >
+                                <span className={`text-sm font-black ${theme.accentText}`}>{rankN}랭크</span>
+                                <span className="text-sm font-black text-zinc-300">{levelM}레벨</span>
+                                <span className="text-xs font-black text-zinc-600">▼</span>
+                            </button>
+                        ) : (
+                            <div className="flex items-center gap-2 py-1">
+                                {/* Rank */}
+                                <div className="relative">
+                                    <select
+                                        value={rankN}
+                                        onChange={(e) => {
+                                            const v = Math.max(0, Math.min(6, Number(e.target.value)));
+                                            setRankN(v);
+                                            commitRankLevel(v, levelM);
+                                        }}
+                                        className="appearance-none bg-white/5 hover:bg-white/10 transition border border-white/10 rounded-lg pl-3 pr-7 py-1 text-zinc-100 text-sm font-black outline-none"
+                                    >
+                                        {Array.from({ length: 7 }, (_, i) => i).map((v) => (
+                                            <option
+                                                key={v}
+                                                value={v}
+                                                style={{ color: "#111827", backgroundColor: "#ffffff" }} // ✅ 텍스트/배경 강제
+                                            >
+                                                {v}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 text-xs">▼</span>
+                                </div>
+
+                                <span className="text-zinc-500 text-sm font-black">랭크</span>
+
+                                {/* Level */}
+                                <div className="relative">
+                                    <select
+                                        value={levelM}
+                                        onChange={(e) => {
+                                            const v = Math.max(0, Math.min(30, Number(e.target.value)));
+                                            setLevelM(v);
+                                            commitRankLevel(rankN, v);
+                                        }}
+                                        className="appearance-none bg-white/5 hover:bg-white/10 transition border border-white/10 rounded-lg pl-3 pr-7 py-1 text-zinc-100 text-sm font-black outline-none"
+                                    >
+                                        {Array.from({ length: 31 }, (_, i) => i).map((v) => (
+                                            <option
+                                                key={v}
+                                                value={v}
+                                                style={{ color: "#111827", backgroundColor: "#ffffff" }} // ✅ 텍스트/배경 강제
+                                            >
+                                                {v}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 text-xs">▼</span>
+                                </div>
+
+                                <span className="text-zinc-500 text-sm font-black">레벨</span>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setEditRankLevel(false)}
+                                    className="ml-1 px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-200 text-xs font-black transition"
+                                >
+                                    완료
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -371,10 +488,7 @@ export const ArkPassiveBoard = ({
                     if (tierNodes.length === 0) return null;
 
                     return (
-                        <div
-                            key={tierNum}
-                            className="flex items-center w-full relative min-h-[140px] border-b border-white/[0.03] last:border-0"
-                        >
+                        <div key={tierNum} className="flex items-center w-full relative min-h-[140px] border-b border-white/[0.03] last:border-0">
                             <div className="flex flex-col items-center justify-center w-20 md:w-28 shrink-0 z-10 border-r border-white/5">
                                 <span className="text-xl md:text-2xl font-black text-zinc-500 leading-none">{tierNum}</span>
                             </div>
@@ -391,13 +505,10 @@ export const ArkPassiveBoard = ({
                                         <div key={node.name} className="flex flex-col items-center relative py-4 w-16 md:w-24 shrink-0">
                                             <div
                                                 className={`relative rounded-lg border transition-all flex items-center justify-center shrink-0 ${
-                                                    isActive
-                                                        ? `cursor-pointer ${theme.borderActive} bg-zinc-900 shadow-lg scale-110`
-                                                        : "grayscale opacity-20 border-white/5 bg-zinc-900 scale-90"
+                                                    isActive ? `cursor-pointer ${theme.borderActive} bg-zinc-900 shadow-lg scale-110` : "grayscale opacity-20 border-white/5 bg-zinc-900 scale-90"
                                                 }`}
                                                 style={{ width: "clamp(44px, 5vw, 56px)", height: "clamp(44px, 5vw, 56px)" }}
                                                 onClick={() => {
-                                                    // ✅ 모달은 "활성 상태"에서만 열리게 유지(원래 동작 유지)
                                                     if (!isActive) return;
                                                     setSelectedEffect(activeEffect);
                                                     setSelectedNodeMax(Number(node.max || 0));
@@ -414,13 +525,12 @@ export const ArkPassiveBoard = ({
 
                                                     setHoverInfo({
                                                         effect: hoverEffect,
-                                                        node, // ✅ 추가
+                                                        node,
                                                         rect: e.currentTarget.getBoundingClientRect(),
                                                     });
                                                 }}
                                                 onMouseLeave={() => setHoverInfo(null)}
                                             >
-                                                {/* ✅ 노드 아이콘은 항상 node.iconId 기반으로 출력(아이콘 안 날아감) */}
                                                 <img
                                                     src={getIconUrl(node.iconId, activeTab)}
                                                     className="w-[85%] h-[85%] object-contain"
@@ -428,31 +538,24 @@ export const ArkPassiveBoard = ({
                                                     alt=""
                                                 />
                                                 {isActive && (
-                                                    <div
-                                                        className={`absolute -top-1 -right-1 ${theme.lvBadge} text-white text-[10px] font-black px-1 rounded shadow-lg border border-white/20 z-20`}
-                                                    >
+                                                    <div className={`absolute -top-1 -right-1 ${theme.lvBadge} text-white text-[10px] font-black px-1 rounded shadow-lg border border-white/20 z-20`}>
                                                         Lv.{currentLv}
                                                     </div>
                                                 )}
                                             </div>
 
-                                            {/* ✅ 이름 양 옆 - / + : 비활성도 +로 활성화 가능 */}
                                             <div className="mt-3 text-center w-full min-h-[35px] px-1">
                                                 <div className="flex items-center justify-center gap-1">
                                                     <button
                                                         onClick={(e) => changeNodeLevel(node, e.shiftKey ? -10 : -1)}
                                                         className="w-4 h-4 text-[10px] font-black rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed"
                                                         title="클릭: -1 / Shift+클릭: -10"
-                                                        disabled={currentLv <= 0} // ✅ 0이면 더 내려갈 수 없으니 비활성
+                                                        disabled={currentLv <= 0}
                                                     >
                                                         −
                                                     </button>
 
-                                                    <p
-                                                        className={`text-[11px] md:text-[13px] font-bold truncate leading-tight ${
-                                                            isActive ? "text-zinc-100" : "text-zinc-600"
-                                                        } max-w-[96px]`}
-                                                    >
+                                                    <p className={`text-[11px] md:text-[13px] font-bold truncate leading-tight ${isActive ? "text-zinc-100" : "text-zinc-600"} max-w-[96px]`}>
                                                         {node.name}
                                                     </p>
 
@@ -460,7 +563,7 @@ export const ArkPassiveBoard = ({
                                                         onClick={(e) => changeNodeLevel(node, e.shiftKey ? +10 : +1)}
                                                         className="w-4 h-4 text-[10px] font-black rounded bg-zinc-800 hover:bg-zinc-700"
                                                         title="클릭: +1 / Shift+클릭: +10"
-                                                        disabled={currentLv >= Number(node.max ?? 0)} // ✅ max 이상 못 올림
+                                                        disabled={currentLv >= Number(node.max ?? 0)}
                                                     >
                                                         +
                                                     </button>
@@ -502,14 +605,8 @@ export const ArkPassiveBoard = ({
                                 {renderTitleWithTier(hoverInfo.effect.Description?.split(" Lv")[0], activeTab)}
                             </div>
                             <div className="text-[12px] leading-relaxed text-zinc-400 space-y-1">
-                                {tooltipLines
-                                    ? tooltipLines.map((t, i) => (
-                                        <div key={i}>{t}</div>
-                                    ))
-                                    : <div className="text-zinc-500">툴팁 데이터 없음</div>
-                                }
+                                {tooltipLines ? tooltipLines.map((t, i) => <div key={i}>{t}</div>) : <div className="text-zinc-500">툴팁 데이터 없음</div>}
                             </div>
-
                         </div>
                     </motion.div>
                 )}
@@ -519,13 +616,7 @@ export const ArkPassiveBoard = ({
             <AnimatePresence>
                 {selectedEffect && (
                     <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 backdrop-blur-sm">
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            onClick={() => setSelectedEffect(null)}
-                            className="absolute inset-0 bg-black/80"
-                        />
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedEffect(null)} className="absolute inset-0 bg-black/80" />
                         <motion.div
                             initial={{ scale: 0.95 }}
                             animate={{ scale: 1 }}
@@ -552,7 +643,6 @@ export const ArkPassiveBoard = ({
                                 </button>
                             </div>
 
-                            {/* 레벨 조절 */}
                             <div className="bg-black/30 border border-white/10 rounded-2xl p-4 mb-4">
                                 <div className="flex items-center justify-between mb-2">
                                     <div className="text-sm font-black text-zinc-200">레벨 조절</div>
@@ -570,12 +660,9 @@ export const ArkPassiveBoard = ({
                                     className="w-full"
                                 />
 
-                                <div className="mt-3 text-[12px] text-zinc-500 font-bold">
-                                    0으로 두면 해당 효과를 “시뮬에서만” 제거합니다.
-                                </div>
+                                <div className="mt-3 text-[12px] text-zinc-500 font-bold">0으로 두면 해당 효과를 “시뮬에서만” 제거합니다.</div>
                             </div>
 
-                            {/* 상세 텍스트 */}
                             <div className="bg-black/40 p-4 rounded-lg border border-white/5 text-[13px] leading-relaxed text-zinc-300 max-h-[320px] overflow-y-auto custom-scrollbar mb-4">
                                 {safeJsonParse(selectedEffect.ToolTip)?.Element_002?.value ? (
                                     <div

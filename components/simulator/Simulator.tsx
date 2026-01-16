@@ -83,6 +83,36 @@ const getQualityColor = (q: number) => {
     return "text-[#FF4040] border-[#FF4040]";
 };
 
+function safeClone<T>(v: T): T {
+    try {
+        // @ts-ignore
+        if (typeof structuredClone === "function") return structuredClone(v);
+    } catch {}
+    return JSON.parse(JSON.stringify(v));
+}
+
+/**
+ * ✅ 재련(+n) / 상급재련(상재) 파싱
+ * - 재련: 아이템 이름에 "+23 ..." 형태로 존재
+ * - 상재: tooltip 내 "[상급 재련] 40단계" 같은 텍스트에서 추출
+ */
+function parseReinforceAndAdvanced(item: Equipment, tooltip: any) {
+    const reinforce = item?.Name?.match(/\+(\d+)/)?.[1] || ""; // "23"
+    const reinforceLabel = reinforce ? `+${reinforce}` : "";
+
+    const advSrc =
+        cleanText(tooltip?.Element_005?.value || "") +
+        " " +
+        cleanText(tooltip?.Element_006?.value || "") +
+        " " +
+        cleanText(tooltip?.Element_007?.value || "");
+
+    const advMatch = advSrc.match(/\[상급\s*재련\]\s*(\d+)\s*단계/);
+    const advanced = advMatch?.[1] || "0";
+
+    return { reinforceLabel, advanced };
+}
+
 /* ---------------------- Gem Slot (보석 UI) ---------------------- */
 const GemSlot = ({
                      gem,
@@ -184,7 +214,9 @@ const NoCharacterView = ({
                     </div>
                     <div>
                         <h2 className="text-xl font-black text-white">캐릭터 정보가 없습니다.</h2>
-                        <p className="text-sm text-zinc-400 mt-1">시뮬레이터를 사용하려면 캐릭터를 먼저 검색해 주세요.</p>
+                        <p className="text-sm text-zinc-400 mt-1">
+                            시뮬레이터를 사용하려면 캐릭터를 먼저 검색해 주세요.
+                        </p>
                     </div>
                 </div>
 
@@ -224,14 +256,6 @@ const NoCharacterView = ({
 /* ---------------------- Main Simulator ---------------------- */
 type SimTab = "info" | "synergy" | "result";
 
-function safeClone<T>(v: T): T {
-    try {
-        // @ts-ignore
-        if (typeof structuredClone === "function") return structuredClone(v);
-    } catch {}
-    return JSON.parse(JSON.stringify(v));
-}
-
 export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ character: propCharacter }) => {
     const location = useLocation();
 
@@ -244,7 +268,7 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
     // ✅ 원본 캐릭터 (절대 직접 수정 X)
     const [character, setCharacter] = useState<CharacterInfo | null>(initialCharacter);
 
-    // ✅ 시뮬에서만 사용할 캐릭터 사본(나중에 스탯 편집 UI 붙일 때 여기만 바꿈)
+    // ✅ 시뮬에서만 사용할 캐릭터 사본
     const [simCharacter, setSimCharacter] = useState<CharacterInfo | null>(
         initialCharacter ? safeClone(initialCharacter) : null
     );
@@ -268,11 +292,15 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
     const [simArkPassive, setSimArkPassive] = useState<any>(null);
 
     // Hover states (툴팁)
-    const [weaponHover, setWeaponHover] = useState<any>(null);
+    const [leftHoverIdx, setLeftHoverIdx] = useState<number | null>(null);
+    const [leftHoverData, setLeftHoverData] = useState<any>(null);
+
     const [accHoverIdx, setAccHoverIdx] = useState<number | null>(null);
     const [accHoverData, setAccHoverData] = useState<any>(null);
+
     const [arkCoreHoverIdx, setArkCoreHoverIdx] = useState<number | null>(null);
     const [arkCoreHoverData, setArkCoreHoverData] = useState<any>(null);
+
     const [jewHoverIdx, setJewHoverIdx] = useState<number | null>(null);
     const [jewHoverData, setJewHoverData] = useState<any>(null);
 
@@ -292,11 +320,8 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
             if (!res.ok) throw new Error("캐릭터 정보를 불러올 수 없습니다.");
             const data = await res.json();
 
-            // ✅ 원본 교체
             setCharacter(data);
-            // ✅ 시뮬 사본도 새로 생성
             setSimCharacter(safeClone(data));
-
             setTab("info");
         } catch (e: any) {
             setSearchError(e?.message ?? "검색 실패");
@@ -323,7 +348,6 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
                 setGems(gemData ?? null);
                 setEngravings(engData ?? null);
 
-                // ✅ 아크패시브: 원본 저장 + 시뮬 사본 생성
                 setOriginalArkPassive(passiveData ?? null);
                 setSimArkPassive(passiveData ? safeClone(passiveData) : null);
             })
@@ -341,10 +365,14 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
 
     const getItemsByType = (types: string[]) => equipments.filter((i) => types.includes(i.Type));
 
-    /** ✅ 무기 1개 */
-    const weaponItem = useMemo(() => {
-        const w = getItemsByType(["무기"])[0];
-        return w ?? null;
+    /** ✅ 좌측: 무기 + 방어구 + 팔찌 */
+    const leftEquipList = useMemo(() => {
+        const armorTypes = ["투구", "상의", "하의", "장갑", "어깨"];
+        const weapon = getItemsByType(["무기"]);
+        const armors = getItemsByType(armorTypes);
+        const bracelet = getItemsByType(["팔찌"]);
+
+        return [...weapon.slice(0, 1), ...armors, ...bracelet.slice(0, 1)];
     }, [equipments]);
 
     /** ✅ 악세사리 정렬 */
@@ -424,6 +452,19 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
                         >
                             캐릭터 정보 페이지로 전환
                         </button>
+
+                        {/* ✅ 새 버튼: 시뮬레이션 실행 */}
+                        <button
+                            onClick={() => setTab("result")}
+                            className="px-4 py-2 rounded-xl font-black text-sm
+               bg-emerald-300/90 text-emerald-950
+               border border-emerald-200/60
+               hover:bg-emerald-300
+               shadow-[0_8px_20px_rgba(16,185,129,0.15)]
+               transition"
+                        >
+                            시뮬레이션 실행
+                        </button>
                     </div>
                 </div>
             </div>
@@ -431,50 +472,130 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
             {/* ===================== ✅ 탭별 컨텐츠 ===================== */}
             {tab === "info" && (
                 <>
-                    {/* (중간 내용은 너가 준 그대로라 생략 없이 유지했음) */}
-                    {/* ---- 여기 아래는 너 기존 코드 그대로 ---- */}
                     {/* ===================== 1) 상단 2열: 좌(무기+악세) / 우(아크그리드+젬효과) ===================== */}
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
-                        {/* 좌측: 무기 + 악세사리 */}
-                        <section className="lg:col-span-6 bg-zinc-950 p-6 rounded-3xl border border-white/5 h-full">
+                        {/* 좌측: 무기 + 방어구 우측 : 악세사리 */}
+                        <section className="lg:col-span-6 bg-zinc-950 p-6 rounded-3xl border border-white/5 h-full overflow-visible">
                             <div className="flex items-end justify-between border-b border-white/10 pb-2 mb-4">
                                 <h2 className="text-lg font-bold text-white/90 tracking-tight">무기 / 악세사리</h2>
-                                <span className="text-[10px] font-black text-emerald-400 px-2 py-0.5 bg-emerald-500/10 rounded-full border border-emerald-500/20">
-                  아크 패시브 ON
-                </span>
                             </div>
 
-                            <div className="flex flex-col gap-2">
-                                {/* 무기 */}
-                                {weaponItem &&
-                                    (() => {
+                            {/* ✅ 좌/우 반으로 분할 */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 overflow-visible">
+                                {/* ================= 좌측: 무기 + 방어구 + 팔찌 ================= */}
+                                <div className="flex flex-col gap-2 overflow-visible">
+                                    <div className="text-[13px] font-black text-white/80 mb-1">무기 / 방어구</div>
+
+                                    {leftEquipList.map((item, idx) => {
                                         let tooltip: any = null;
                                         try {
-                                            tooltip = JSON.parse(weaponItem.Tooltip);
+                                            tooltip = JSON.parse(item.Tooltip);
                                         } catch {}
+
                                         const quality = tooltip?.Element_001?.value?.qualityValue ?? 0;
 
-                                        const reinforceLevel = weaponItem.Name.match(/\+(\d+)/)?.[0] || "";
-                                        const itemName = cleanText(weaponItem.Name).replace(/\+\d+\s/, "");
+                                        // ✅ 무기/방어구 모두 재련(+n) / 상재 표시
+                                        const { reinforceLabel, advanced } = parseReinforceAndAdvanced(item, tooltip);
 
-                                        let advancedReinforce = "0";
-                                        const advMatch = cleanText(tooltip?.Element_005?.value || "").match(/\[상급\s*재련\]\s*(\d+)단계/);
-                                        if (advMatch) advancedReinforce = advMatch[1];
+                                        const itemName = cleanText(item.Name).replace(/\+\d+\s*/, "").trim();
 
                                         return (
                                             <div
-                                                key={weaponItem.Name}
-                                                className="relative group flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/[0.04] transition-colors h-[72px] cursor-help"
-                                                onMouseEnter={() => setWeaponHover(tooltip)}
-                                                onMouseLeave={() => setWeaponHover(null)}
+                                                key={`${item.Type}|${item.Icon}|${item.Name}`}
+                                                className="relative group flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/[0.04] transition-colors h-[72px] cursor-help overflow-visible"
+                                                onMouseEnter={() => {
+                                                    setLeftHoverIdx(idx);
+                                                    setLeftHoverData(tooltip);
+                                                }}
+                                                onMouseLeave={() => {
+                                                    setLeftHoverIdx(null);
+                                                    setLeftHoverData(null);
+                                                }}
                                             >
                                                 <div className="relative shrink-0">
                                                     <div className="p-0.5 rounded-lg bg-gradient-to-br from-[#3d3325] to-[#1a1a1c] border border-[#e9d2a6]/30 shadow-lg">
                                                         <img
-                                                            src={weaponItem.Icon}
+                                                            src={item.Icon}
                                                             className="w-12 h-12 rounded-md object-cover bg-black/20"
                                                             alt={itemName}
                                                         />
+                                                    </div>
+
+                                                    {/* 품질이 존재하는 경우만 표시 */}
+                                                    {typeof quality === "number" && quality > 0 && (
+                                                        <div
+                                                            className={`absolute -bottom-1 -right-1 px-1 rounded-md text-[10px] font-black border ${getQualityColor(
+                                                                quality
+                                                            )} bg-zinc-900 text-[#e9d2a6]`}
+                                                        >
+                                                            {quality}
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                <div className="flex-1 min-w-0">
+                                                    <h3 className="text-white/90 font-bold text-[14px] truncate mb-0.5">
+                                                        <span className="text-white/40 mr-2">{item.Type}</span>
+                                                        {itemName}
+                                                    </h3>
+
+                                                    <div className="flex items-center gap-2">
+                                                        {reinforceLabel && (
+                                                            <span className="text-white/60 text-[12px] font-bold">재련 {reinforceLabel}</span>
+                                                        )}
+                                                        {advanced !== "0" && (
+                                                            <span className="text-sky-400 text-[12px] font-bold">상재 +{advanced}</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* ✅ 좌측은 row별 tooltip만 렌더링 (중복/도배 방지) */}
+                                                {leftHoverIdx === idx && leftHoverData && (
+                                                    <div className="absolute left-full top-0 -ml-2 pl-4 z-[9999] h-full flex items-start">
+                                                        <EquipmentTooltip data={leftHoverData} />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+
+                                    {!leftEquipList.length && (
+                                        <div className="text-sm text-zinc-500">무기/방어구 정보가 없습니다.</div>
+                                    )}
+                                </div>
+
+                                {/* ================= 우측: 악세(목/귀/반) ================= */}
+                                <div className="flex flex-col gap-2 overflow-visible">
+                                    <div className="text-[13px] font-black text-white/80 mb-1">악세사리</div>
+
+                                    {accessories.map((item, i) => {
+                                        let tooltip: any = null;
+                                        try {
+                                            tooltip = JSON.parse(item.Tooltip);
+                                        } catch {}
+                                        const quality = tooltip?.Element_001?.value?.qualityValue ?? 0;
+
+                                        const passive =
+                                            cleanText(tooltip?.Element_007?.value?.Element_001 || "").match(/\d+/)?.[0] || "0";
+                                        const tierStr = tooltip?.Element_001?.value?.leftStr2 || "";
+                                        const tier = tierStr.replace(/[^0-9]/g, "").slice(-1) || "4";
+
+                                        return (
+                                            <div
+                                                key={`${item.Type}|${item.Icon}|${item.Name}`}
+                                                className="relative group flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/[0.04] transition-colors h-[72px] cursor-help overflow-visible"
+                                                onMouseEnter={() => {
+                                                    setAccHoverIdx(i);
+                                                    setAccHoverData(tooltip);
+                                                }}
+                                                onMouseLeave={() => {
+                                                    setAccHoverIdx(null);
+                                                    setAccHoverData(null);
+                                                }}
+                                            >
+                                                <div className="relative shrink-0">
+                                                    <div className="p-0.5 rounded-lg bg-gradient-to-br from-[#3d3325] to-[#1a1a1c] border border-[#e9d2a6]/30">
+                                                        <img src={item.Icon} className="w-12 h-12 rounded-md object-cover" alt="" />
                                                     </div>
                                                     <div
                                                         className={`absolute -bottom-1 -right-1 px-1 rounded-md text-[10px] font-black border ${getQualityColor(
@@ -485,94 +606,43 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
                                                     </div>
                                                 </div>
 
-                                                <div className="flex-1 min-w-0">
-                                                    <h3 className="text-white/90 font-bold text-[14px] truncate mb-0.5">{itemName}</h3>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-white/50 text-[12px]">재련 {reinforceLevel}</span>
-                                                        {advancedReinforce !== "0" && (
-                                                            <span className="text-sky-400 text-[12px] font-bold">상재 +{advancedReinforce}</span>
-                                                        )}
+                                                <div className="flex-[2] min-w-0">
+                                                    <h3 className="text-white/90 font-bold text-[14px] truncate mb-0.5">{item.Name || "아이템"}</h3>
+                                                    <div className="flex gap-4 text-[11px]">
+                                                        <span className="text-orange-400 font-bold">깨달음 +{passive}</span>
+                                                        <span className="text-white/40 font-medium">{tier}티어</span>
                                                     </div>
                                                 </div>
 
-                                                {weaponHover && (
+                                                {accHoverIdx === i && accHoverData && (
                                                     <div className="absolute left-full top-0 -ml-2 pl-4 z-[9999] h-full flex items-start">
-                                                        <EquipmentTooltip data={weaponHover} />
+                                                        <AccessoryTooltip data={accHoverData} />
                                                     </div>
                                                 )}
                                             </div>
                                         );
-                                    })()}
+                                    })}
 
-                                {/* 악세사리 */}
-                                {accessories.map((item, i) => {
-                                    let tooltip: any = null;
-                                    try {
-                                        tooltip = JSON.parse(item.Tooltip);
-                                    } catch {}
-                                    const quality = tooltip?.Element_001?.value?.qualityValue ?? 0;
-
-                                    const passive =
-                                        cleanText(tooltip?.Element_007?.value?.Element_001 || "").match(/\d+/)?.[0] || "0";
-                                    const tierStr = tooltip?.Element_001?.value?.leftStr2 || "";
-                                    const tier = tierStr.replace(/[^0-9]/g, "").slice(-1) || "4";
-
-                                    return (
-                                        <div
-                                            key={`${item.Type}-${i}-${item.Name}`}
-                                            className="relative group flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/[0.04] transition-colors h-[72px] cursor-help"
-                                            onMouseEnter={() => {
-                                                setAccHoverIdx(i);
-                                                setAccHoverData(tooltip);
-                                            }}
-                                            onMouseLeave={() => {
-                                                setAccHoverIdx(null);
-                                                setAccHoverData(null);
-                                            }}
-                                        >
-                                            <div className="relative shrink-0">
-                                                <div className="p-0.5 rounded-lg bg-gradient-to-br from-[#3d3325] to-[#1a1a1c] border border-[#e9d2a6]/30">
-                                                    <img src={item.Icon} className="w-12 h-12 rounded-md object-cover" alt="" />
-                                                </div>
-                                                <div
-                                                    className={`absolute -bottom-1 -right-1 px-1 rounded-md text-[10px] font-black border ${getQualityColor(
-                                                        quality
-                                                    )} bg-zinc-900 text-[#e9d2a6]`}
-                                                >
-                                                    {quality}
-                                                </div>
-                                            </div>
-
-                                            <div className="flex-[2] min-w-0">
-                                                <h3 className="text-white/90 font-bold text-[14px] truncate mb-0.5">{item.Name || "아이템"}</h3>
-                                                <div className="flex gap-4 text-[11px]">
-                                                    <span className="text-orange-400 font-bold">깨달음 +{passive}</span>
-                                                    <span className="text-white/40 font-medium">{tier}티어</span>
-                                                </div>
-                                            </div>
-
-                                            {accHoverIdx === i && accHoverData && (
-                                                <div className="absolute left-full top-0 -ml-2 pl-4 z-[9999] h-full flex items-start">
-                                                    <AccessoryTooltip data={accHoverData} />
-                                                </div>
-                                            )}
+                                    {!accessories.length && (
+                                        <div className="text-sm text-zinc-500 bg-zinc-950/40 border border-white/5 rounded-xl p-4">
+                                            악세사리 정보가 없습니다.
                                         </div>
-                                    );
-                                })}
+                                    )}
+                                </div>
                             </div>
                         </section>
 
                         {/* 우측: 아크그리드 + 젬효과 */}
-                        <section className="lg:col-span-6 bg-[#121213] p-6 rounded-3xl border border-white/5 h-full">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch h-full">
+                        <section className="lg:col-span-6 bg-[#121213] p-6 rounded-3xl border border-white/5 h-full overflow-visible">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch h-full overflow-visible">
                                 {/* 아크 그리드 */}
-                                <div className="flex flex-col h-full">
+                                <div className="flex flex-col h-full overflow-visible">
                                     <div className="flex items-center gap-3 border-b border-zinc-800/50 pb-4 mb-6">
                                         <div className="w-1.5 h-5 bg-purple-500 rounded-full"></div>
                                         <h1 className="text-lg font-extrabold text-white tracking-tight uppercase">아크 그리드</h1>
                                     </div>
 
-                                    <div className="grid grid-cols-3 gap-y-12 gap-x-4">
+                                    <div className="grid grid-cols-3 gap-y-12 gap-x-4 overflow-visible">
                                         {arkGrid?.Slots?.map((slot, i) => {
                                             const nameParts = slot.Name.split(/\s*:\s*/);
                                             const category = nameParts[0];
@@ -581,7 +651,7 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
                                             return (
                                                 <div
                                                     key={i}
-                                                    className="relative group flex flex-col items-center cursor-help"
+                                                    className="relative group flex flex-col items-center cursor-help overflow-visible"
                                                     onMouseEnter={() => {
                                                         setArkCoreHoverIdx(i);
                                                         const parsed = typeof slot.Tooltip === "string" ? JSON.parse(slot.Tooltip) : slot.Tooltip;
@@ -797,7 +867,6 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
                             <h2 className="text-xl font-bold">아크 패시브</h2>
                         </div>
 
-                        {/* ✅ 여기 중요: simArkPassive를 넘기고, 변경도 simArkPassive만 바꿈 */}
                         <ArkPassiveBoard
                             character={character}
                             data={simArkPassive}
@@ -821,13 +890,14 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
                                 const stoneIcon = eng.AbilityStoneIcon || FALLBACK_ABILITY_STONE_ICON;
 
                                 return (
-                                    <div
-                                        key={i}
-                                        className="flex items-center justify-between bg-[#181818] px-3 py-2 rounded border border-white/5"
-                                    >
+                                    <div key={i} className="flex items-center justify-between bg-[#181818] px-3 py-2 rounded border border-white/5">
                                         <div className="flex items-center gap-2 min-w-0">
                                             <div className="w-7 h-7 shrink-0 rounded overflow-hidden bg-black/30 border border-white/10">
-                                                {iconUrl ? <img src={iconUrl} alt={eng.Name} className="w-full h-full object-cover" /> : <div className="w-full h-full" />}
+                                                {iconUrl ? (
+                                                    <img src={iconUrl} alt={eng.Name} className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <div className="w-full h-full" />
+                                                )}
                                             </div>
 
                                             <span className="text-[12px] font-black text-white/90 shrink-0">{n}단계</span>
@@ -871,7 +941,6 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
                         <div className="text-xl font-black text-white">결과</div>
                     </div>
 
-                    {/* ✅ 결과는 simCharacter / simArkPassive 기준으로만 (시뮬 전용) */}
                     <ResultTab character={simCharacter} arkPassive={simArkPassive} />
                 </div>
             )}
