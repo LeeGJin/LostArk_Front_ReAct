@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertCircle, RotateCcw, Trash2 } from "lucide-react";
-import { MASTER_DATA } from "@/constants/arkPassiveData";
-import { getTooltip } from "@/constants/tooltipGetter";
+import { MASTER_DATA } from "@/constants/ArkPassiveData/arkPassiveData.tsx";
+import { getTooltip } from "@/constants/ArkPassiveData/tooltipGetter.tsx";
 
 export const ArkPassiveBoard = ({
                                     character,
@@ -24,7 +24,7 @@ export const ArkPassiveBoard = ({
     const [selectedEffect, setSelectedEffect] = useState<any>(null);
     const [selectedNodeMax, setSelectedNodeMax] = useState<number>(0);
     const [editLv, setEditLv] = useState<number>(0);
-    const [hoverInfo, setHoverInfo] = useState<{ effect: any; rect: DOMRect | null } | null>(null);
+    const [hoverInfo, setHoverInfo] = useState<{ effect: any; node: any; rect: DOMRect | null } | null>(null);
 
     // ✅ 시뮬레이터용(수정 가능한) Effects 복사본
     const [simEffects, setSimEffects] = useState<any[]>(() => data?.Effects ?? []);
@@ -36,13 +36,15 @@ export const ArkPassiveBoard = ({
             activeTab === "진화" ? "EVOLUTION" :
                 activeTab === "깨달음" ? "ENLIGHTENMENT" : "LEAP";
 
-        const rawName = hoverInfo.effect?.Name ?? hoverInfo.effect?.name ?? "";
-        const name = rawName.replace(/^진화\s+|^깨달음\s+|^도약\s+/, "");
+        // ✅ 핵심: DB 매칭은 node.name이 제일 정확함
+        const name = String(hoverInfo.node?.name ?? "").trim();
 
-        const level = getLvFromDesc(hoverInfo.effect?.Description ?? "Lv.1");
-        const className = character?.CharacterClassName;
+        const level = getLvFromDesc(String(hoverInfo.effect?.Description ?? "Lv.1"));
 
-        return getTooltip(category, name, level, className);
+        const className = character?.CharacterClassName || character?.CharacterClass;
+
+        // (선택) 만약 DB가 직업 공통으로 저장돼 있으면 className을 빼야 함
+        return getTooltip(category as any, name, level, className);
     }, [hoverInfo, activeTab, character]);
 
 
@@ -401,9 +403,21 @@ export const ArkPassiveBoard = ({
                                                     setSelectedNodeMax(Number(node.max || 0));
                                                     setEditLv(currentLv);
                                                 }}
-                                                onMouseEnter={(e) =>
-                                                    isActive && setHoverInfo({ effect: activeEffect, rect: e.currentTarget.getBoundingClientRect() })
-                                                }
+                                                onMouseEnter={(e) => {
+                                                    const hoverEffect = isActive
+                                                        ? activeEffect
+                                                        : {
+                                                            Name: `${activeTab} ${node.name}`,
+                                                            Description: `${activeTab} ${node.name} Lv.1`,
+                                                            Icon: getIconUrl(node.iconId, activeTab),
+                                                        };
+
+                                                    setHoverInfo({
+                                                        effect: hoverEffect,
+                                                        node, // ✅ 추가
+                                                        rect: e.currentTarget.getBoundingClientRect(),
+                                                    });
+                                                }}
                                                 onMouseLeave={() => setHoverInfo(null)}
                                             >
                                                 {/* ✅ 노드 아이콘은 항상 node.iconId 기반으로 출력(아이콘 안 날아감) */}

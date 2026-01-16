@@ -1,7 +1,7 @@
 // tooltipGetter.tsx
-import { TOOLTIP_DB } from "./ArkPassiveTooltipData";
-import type { ArkCategory, ArkTooltipEntry, TooltipLine } from "./ArkPassiveTooltipData";
-import { makeTooltipKey } from "./tooltipKey";
+import { TOOLTIP_DB } from "./ArkPassiveTooltipData.tsx";
+import type { ArkCategory, ArkTooltipEntry, TooltipLine } from "./ArkPassiveTooltipData.tsx";
+import { makeTooltipKey } from "./tooltipKey.tsx";
 
 function renderLine(line: TooltipLine, lv: number): string {
     let out = line.base;

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, AlertCircle } from 'lucide-react';
-import { MASTER_DATA } from '@/constants/arkPassiveData';
+import { MASTER_DATA } from '@/constants/ArkPassiveData/arkPassiveData.tsx';
 
 export const ArkPassiveTab = ({ character }: { character: any }) => {
     const [data, setData] = useState<any>(null);

@@ -1,9 +1,21 @@
-// ArkPassiveTooltipData.ts
+import * as EAL from "./EnlightmentAndLeap.tsx";
+import { EVOLUTION_DATA } from "./EVOLUTION_DATA.tsx";
 
-import {ENLIGHTENMENT_DATA} from "@/constants/enlightment/ENLIGHTMENT_DATA.tsx";
-import {LEAP_DATA} from "@/constants/LEAP/LEAP_DATA.tsx";
-import {EVOLUTION_DATA} from "@/constants/evolution/EVOLUTION_DATA.tsx";
-import{MASTER_DATA} from "@/constants/arkPassiveData.tsx";
+
+const ENLIGHTENMENT_DATA = Object.assign(
+    {},
+    ...Object.entries(EAL)
+        .filter(([key]) => key.endsWith("_ENLIGHTENMENT"))
+        .map(([, value]) => value)
+);
+
+const LEAP_DATA = Object.assign(
+    {},
+    ...Object.entries(EAL)
+        .filter(([key]) => key.endsWith("_LEAP"))
+        .map(([, value]) => value)
+);
+
 
 export type ArkCategory = "EVOLUTION" | "ENLIGHTENMENT" | "LEAP";
 
@@ -25,9 +37,12 @@ export type ArkTooltipEntry = {
 };
 
 export const TOOLTIP_DB = {
-    ...MASTER_DATA,
+    // ✅ 진화(공용) 툴팁 데이터
     ...EVOLUTION_DATA,
     ...ENLIGHTENMENT_DATA,
     ...LEAP_DATA,
 } as const;
+
+
+
 
