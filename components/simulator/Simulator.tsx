@@ -307,15 +307,15 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
 
     /** ✅ 상세 데이터 로딩 */
     useEffect(() => {
-        if (!character?.name) return;
+        if (!character?.CharacterName) return;
 
         setLoading(true);
         Promise.all([
-            fetch(`/equipment?name=${encodeURIComponent(character.name)}`).then((r) => r.json()),
-            fetch(`/arkgrid?name=${encodeURIComponent(character.name)}`).then((r) => r.json()),
-            fetch(`/gems?name=${encodeURIComponent(character.name)}`).then((r) => r.json()),
-            fetch(`/engravings?name=${encodeURIComponent(character.name)}`).then((r) => r.json()),
-            fetch(`/arkpassive?name=${encodeURIComponent(character.name)}`).then((r) => r.json()),
+            fetch(`/equipment?name=${encodeURIComponent(character.CharacterName)}`).then((r) => r.json()),
+            fetch(`/arkgrid?name=${encodeURIComponent(character.CharacterName)}`).then((r) => r.json()),
+            fetch(`/gems?name=${encodeURIComponent(character.CharacterName)}`).then((r) => r.json()),
+            fetch(`/engravings?name=${encodeURIComponent(character.CharacterName)}`).then((r) => r.json()),
+            fetch(`/arkpassive?name=${encodeURIComponent(character.CharacterName)}`).then((r) => r.json()),
         ])
             .then(([eqData, arkData, gemData, engData, passiveData]) => {
                 setEquipments(Array.isArray(eqData) ? eqData : []);
@@ -337,7 +337,7 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
                 setSimArkPassive(null);
             })
             .finally(() => setLoading(false));
-    }, [character?.name]);
+    }, [character?.CharacterName]);
 
     const getItemsByType = (types: string[]) => equipments.filter((i) => types.includes(i.Type));
 
@@ -367,7 +367,7 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
     }, [equipments]);
 
     // 캐릭터 없으면 빈 화면 + 검색창
-    if (!character?.name) {
+    if (!character?.CharacterName) {
         return <NoCharacterView onSearch={handleSearch} searching={searching} error={searchError} />;
     }
 
@@ -382,8 +382,8 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
     }
 
     const goToProfilePage = () => {
-        if (!character?.name) return;
-        window.location.href = `/profilePage?name=${encodeURIComponent(character.name)}`;
+        if (!character?.CharacterName) return;
+        window.location.href = `/profilePage?name=${encodeURIComponent(character.CharacterName)}`;
     };
 
     return (
