@@ -83,7 +83,7 @@ type EngravingsResponse = {
 
 /** 어빌리티 스톤 아이콘: 데이터에 없으면 이걸로 대체 */
 const FALLBACK_ABILITY_STONE_ICON =
-    'https://cdn-lostark.game.onstove.com/efui_iconatlas/use/use_7_206.png';
+    'https://cdn-lostark.game.onstove.com/2018/obt/assets/images/common/game/ico_ability_stone_symbol.png';
 
 
 /* ================= 컴포넌트 ================= */

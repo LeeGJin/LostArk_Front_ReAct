@@ -12,6 +12,8 @@ import { ArkPassiveBoard } from "./ArkPassiveBoard.tsx";
 import engravingIconMap from "@/components/profile/tabs/engravingsIdTable.json";
 import { CharacterInfo } from "../../types.ts";
 
+type CharacterInfoCompat = CharacterInfo & { CharacterName?: string };
+
 type ArkPassiveEffect = {
     Name: string;
     Description?: string;
@@ -22,7 +24,7 @@ type ArkPassiveEffect = {
 };
 
 const FALLBACK_ABILITY_STONE_ICON =
-    "https://cdn-lostark.game.onstove.com/efui_iconatlas/use/use_7_206.png";
+    "https://cdn-lostark.game.onstove.com/2018/obt/assets/images/common/game/ico_ability_stone_symbol.png";
 
 /* ---------------------- Interfaces (CombatTab에서 필요한 것만) ---------------------- */
 interface Equipment {
@@ -256,7 +258,7 @@ const NoCharacterView = ({
 /* ---------------------- Main Simulator ---------------------- */
 type SimTab = "info" | "synergy" | "result";
 
-export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ character: propCharacter }) => {
+export const Simulator: React.FC<{ character?: CharacterInfoCompat  | null }> = ({ character: propCharacter }) => {
     const location = useLocation();
 
     /** ✅ 우선순위: props > location.state.character > null */
@@ -266,10 +268,10 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
     }, [location.state, propCharacter]);
 
     // ✅ 원본 캐릭터 (절대 직접 수정 X)
-    const [character, setCharacter] = useState<CharacterInfo | null>(initialCharacter);
+    const [character, setCharacter] = useState<CharacterInfoCompat  | null>(initialCharacter);
 
     // ✅ 시뮬에서만 사용할 캐릭터 사본
-    const [simCharacter, setSimCharacter] = useState<CharacterInfo | null>(
+    const [simCharacter, setSimCharacter] = useState<CharacterInfoCompat  | null>(
         initialCharacter ? safeClone(initialCharacter) : null
     );
 
@@ -309,6 +311,10 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
         setSimCharacter(initialCharacter ? safeClone(initialCharacter) : null);
     }, [initialCharacter]);
 
+    const characterName = useMemo(() => {
+        return character?.CharacterName ?? character?.name ?? "";
+    }, [character]);
+
     /** ✅ 캐릭터 검색 -> /stat 로 캐릭터 기본정보 확보 */
     const handleSearch = async (name: string) => {
         if (!name) return;
@@ -332,15 +338,15 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
 
     /** ✅ 상세 데이터 로딩 */
     useEffect(() => {
-        if (!character?.CharacterName) return;
+        if (!characterName) return;
 
         setLoading(true);
         Promise.all([
-            fetch(`/equipment?name=${encodeURIComponent(character.CharacterName)}`).then((r) => r.json()),
-            fetch(`/arkgrid?name=${encodeURIComponent(character.CharacterName)}`).then((r) => r.json()),
-            fetch(`/gems?name=${encodeURIComponent(character.CharacterName)}`).then((r) => r.json()),
-            fetch(`/engravings?name=${encodeURIComponent(character.CharacterName)}`).then((r) => r.json()),
-            fetch(`/arkpassive?name=${encodeURIComponent(character.CharacterName)}`).then((r) => r.json()),
+            fetch(`/equipment?name=${encodeURIComponent(characterName)}`).then((r) => r.json()),
+            fetch(`/arkgrid?name=${encodeURIComponent(characterName)}`).then((r) => r.json()),
+            fetch(`/gems?name=${encodeURIComponent(characterName)}`).then((r) => r.json()),
+            fetch(`/engravings?name=${encodeURIComponent(characterName)}`).then((r) => r.json()),
+            fetch(`/arkpassive?name=${encodeURIComponent(characterName)}`).then((r) => r.json()),
         ])
             .then(([eqData, arkData, gemData, engData, passiveData]) => {
                 setEquipments(Array.isArray(eqData) ? eqData : []);
@@ -361,7 +367,7 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
                 setSimArkPassive(null);
             })
             .finally(() => setLoading(false));
-    }, [character?.CharacterName]);
+    }, [characterName]);
 
     const getItemsByType = (types: string[]) => equipments.filter((i) => types.includes(i.Type));
 
@@ -395,7 +401,7 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
     }, [equipments]);
 
     // 캐릭터 없으면 빈 화면 + 검색창
-    if (!character?.CharacterName) {
+    if (!characterName) {
         return <NoCharacterView onSearch={handleSearch} searching={searching} error={searchError} />;
     }
 
@@ -410,7 +416,7 @@ export const Simulator: React.FC<{ character?: CharacterInfo | null }> = ({ char
     }
 
     const goToProfilePage = () => {
-        if (!character?.CharacterName) return;
+        if (!characterName) return;
         window.location.href = `/profilePage?name=${encodeURIComponent(character.CharacterName)}`;
     };
 
