@@ -108,6 +108,25 @@ export const CombatTab = ({ character }: { character: any }) => {
     const [arkCoreHoverData, setArkCoreHoverData] = React.useState<any>(null);
     const [jewlryHoverIdx , setJewlryHoverIdx] = React.useState<any>(null);
     const [jewlryHoverData, setJewlryHoverData] = React.useState<any>(null);
+// ✅ 활성 각인 툴팁 hover
+    const [engrHoverIdx, setEngrHoverIdx] = useState<number | null>(null);
+    const [engrHoverName, setEngrHoverName] = useState<string | null>(null);
+    const [engrHoverDesc, setEngrHoverDesc] = useState<string>("");
+
+
+    const engravingDescToHtml = (desc: string) => {
+        if (!desc) return "";
+
+        // <FONT COLOR='#99ff99'>텍스트</FONT> → <span style="color:#99ff99">텍스트</span>
+        let html = desc
+            .replace(/<FONT\s+COLOR=['"](#?[0-9a-fA-F]{6})['"]>/g, `<span style="color:$1">`)
+            .replace(/<\/FONT>/g, `</span>`);
+
+        // 줄바꿈이 올 수도 있으니 처리
+        html = html.replace(/\n/g, "<br />");
+
+        return html;
+    };
 
 
     const normalizeEngravingName = (name: string) => {
@@ -899,40 +918,97 @@ export const CombatTab = ({ character }: { character: any }) => {
 
                     <div className="flex flex-col gap-1.5">
                         {(engravings?.ArkPassiveEffects ?? []).map((eng, i) => {
-                            const n = typeof eng.Level === 'number' ? eng.Level : 0;
-                            const m = typeof eng.AbilityStoneLevel === 'number' ? eng.AbilityStoneLevel : 0;
+                            const n = typeof eng.Level === "number" ? eng.Level : 0;
+                            const m = typeof eng.AbilityStoneLevel === "number" ? eng.AbilityStoneLevel : 0;
                             const iconUrl = getEngravingIconUrl(eng.Name);
                             const stoneIcon = eng.AbilityStoneIcon || FALLBACK_ABILITY_STONE_ICON;
 
                             return (
-                                /* bg-opacity와 transition을 활용한 호버 효과 */
-                                <div key={i} className="flex items-center justify-between px-4 py-2 rounded-sm group transition-all duration-200 cursor-default">
-
+                                <div
+                                    key={i}
+                                    className="relative flex items-center justify-between px-4 py-2 rounded-sm group transition-all duration-200 cursor-default hover:bg-white/[0.02]"
+                                    onMouseEnter={() => {
+                                        setEngrHoverIdx(i);
+                                        setEngrHoverName(eng.Name || null);
+                                        setEngrHoverDesc(eng.Description || "");
+                                    }}
+                                    onMouseLeave={() => {
+                                        setEngrHoverIdx(null);
+                                        setEngrHoverName(null);
+                                        setEngrHoverDesc("");
+                                    }}
+                                >
                                     <div className="flex items-center min-w-0">
                                         {/* 1. 각인 원형 아이콘 */}
                                         <div className="w-10 h-10 shrink-0 rounded-full overflow-hidden bg-black/60 mr-4 border border-[#3e444d]">
-                                            <img src={iconUrl} alt={eng.Name} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                                            <img
+                                                src={iconUrl}
+                                                alt={eng.Name}
+                                                className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
+                                            />
                                         </div>
 
-                                        {/* 2. 단계 표시 (이미지 고증) */}
+                                        {/* 2. 단계 표시 */}
                                         <div className="flex items-center gap-1.5 mr-5">
                                             <Diamond
                                                 size={14}
                                                 className="text-[#f16022] fill-[#f16022] drop-shadow-[0_0_5px_rgba(241,96,34,0.5)]"
                                             />
                                             <span className="text-[#a8a8a8] text-sm font-medium">x</span>
-                                            <span className="text-white text-xl font-bold leading-none tabular-nums">{n}</span>
+                                            <span className="text-white text-xl font-bold leading-none tabular-nums">
+              {n}
+            </span>
                                         </div>
 
-                                        {/* 3. 각인명 및 스톤 레벨 */}
+                                        {/* 3. 각인명 + (이름 옆 툴팁 앵커) */}
                                         <div className="flex items-center gap-3 min-w-0">
-                                            <span className="text-[#efeff0] font-bold text-[17px] tracking-tight truncate">
-                                                {eng.Name}
-                                            </span>
+                                            {/* ✅ 이름 래퍼를 relative로 만들고, 여기서 툴팁을 '옆'에 띄움 */}
+                                            <div className="relative min-w-0">
+              <span className="text-[#efeff0] font-bold text-[17px] tracking-tight truncate">
+                {eng.Name}
+              </span>
 
+                                                {/* ✅ 이름 옆 툴팁 */}
+                                                {engrHoverIdx === i && engrHoverDesc && (
+                                                    <div
+                                                        className="absolute left-full top-1/2 -translate-y-1/2 ml-3 z-[9999]"
+                                                        onMouseEnter={() => setEngrHoverIdx(i)}
+                                                        onMouseLeave={() => {
+                                                            setEngrHoverIdx(null);
+                                                            setEngrHoverName(null);
+                                                            setEngrHoverDesc("");
+                                                        }}
+                                                    >
+                                                        <div className="w-[380px] max-w-[60vw] rounded-xl border border-white/10 bg-[#0b0c10]/95 shadow-2xl backdrop-blur-md p-4 animate-in fade-in zoom-in-95 duration-150">
+                                                            <div className="flex items-start gap-3">
+                                                                <div className="w-9 h-9 rounded-lg overflow-hidden border border-white/10 bg-black/40 shrink-0">
+                                                                    <img src={iconUrl} alt="" className="w-full h-full object-cover" />
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <div className="text-[13px] font-black text-white mb-1 truncate">
+                                                                        {engrHoverName}
+                                                                    </div>
+                                                                    <div
+                                                                        className="text-[12px] leading-relaxed text-zinc-200"
+                                                                        dangerouslySetInnerHTML={{
+                                                                            __html: engravingDescToHtml(engrHoverDesc),
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* 스톤 레벨 */}
                                             {m > 0 && (
-                                                <div className="flex items-center gap-1.5 ml-2 px-2 py-0.5">
-                                                    <img src={stoneIcon} alt="Stone" className="w-4 h-5 object-contain brightness-125" />
+                                                <div className="flex items-center gap-1.5 ml-2 bg-black/20 px-2 py-0.5 rounded-sm border border-white/5">
+                                                    <img
+                                                        src={stoneIcon}
+                                                        alt="Stone"
+                                                        className="w-4 h-5 object-contain brightness-125"
+                                                    />
                                                     <div className="flex items-baseline gap-0.5">
                                                         <span className="text-[#5e666f] text-[11px] font-bold">Lv.</span>
                                                         <span className="text-[#00ccff] text-[17px] font-black">{m}</span>
@@ -942,10 +1018,19 @@ export const CombatTab = ({ character }: { character: any }) => {
                                         </div>
                                     </div>
 
+                                    {/* 우측 hover 장식 */}
+                                    <div className="flex items-center gap-3 shrink-0">
+                                        <div className="w-1 h-6 rounded-full bg-orange-500/0 group-hover:bg-orange-500 shadow-[0_0_10px_rgba(241,96,34,0.8)] transition-all duration-300" />
+                                        <ChevronRight
+                                            size={18}
+                                            className="text-zinc-600 group-hover:text-zinc-300 opacity-0 group-hover:opacity-100 translate-x-[-10px] group-hover:translate-x-0 transition-all duration-300"
+                                        />
+                                    </div>
                                 </div>
                             );
                         })}
                     </div>
+
                 </section>
                 {/* ================= 아바타 섹션 수정 시작 ================= */}
                 <section className="bg-[#121213] rounded-xl border border-white/5 p-6 space-y-6 shadow-2xl">
